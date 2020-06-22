@@ -36,6 +36,8 @@ import org.slf4j.LoggerFactory;
 
 import java.io.EOFException;
 import java.io.IOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.net.SocketTimeoutException;
 
 import static org.apache.commons.lang3.StringUtils.isNotEmpty;
@@ -86,6 +88,9 @@ public class S3AInputStream extends FSInputStream implements CanSetReadahead {
   private String serverSideEncryptionKey;
   private S3AInputPolicy inputPolicy;
   private long readahead = Constants.DEFAULT_READAHEAD_RANGE;
+  private final ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
+  private final boolean IsCurrentThreadCPUTimeSupported =
+          threadMXBean.isCurrentThreadCpuTimeSupported();
 
   /**
    * This is the actual position within the object, used by
@@ -159,6 +164,12 @@ public class S3AInputStream extends FSInputStream implements CanSetReadahead {
   private synchronized void reopen(String reason, long targetPos, long length,
           boolean forceAbort) throws IOException {
 
+    long startTime = System.nanoTime();
+    long startCPUTime = 0L;
+    if (IsCurrentThreadCPUTimeSupported) {
+      startCPUTime = threadMXBean.getCurrentThreadCpuTime();
+    }
+
     if (wrappedStream != null) {
       closeStream("reopen(" + reason + ")", contentRangeFinish, forceAbort);
     }
@@ -186,6 +197,13 @@ public class S3AInputStream extends FSInputStream implements CanSetReadahead {
     if (wrappedStream == null) {
       throw new IOException("Null IO stream from reopen of (" + reason +  ") "
           + uri);
+    }
+
+    long elapsedTimeMicrosec = (System.nanoTime() - startTime) / 1000L;
+    S3ATimeInstrumentation.incrementTimeElapsedSeekOps(elapsedTimeMicrosec);
+    if (IsCurrentThreadCPUTimeSupported) {
+      long deltaCPUTimeMicrosec = (threadMXBean.getCurrentThreadCpuTime() - startCPUTime) / 1000L;
+      S3ATimeInstrumentation.incrementCPUTimeDuringSeek(deltaCPUTimeMicrosec);
     }
 
     this.pos = targetPos;
@@ -241,6 +259,13 @@ public class S3AInputStream extends FSInputStream implements CanSetReadahead {
     if (wrappedStream == null) {
       return;
     }
+
+    long startTime = System.nanoTime();
+    long startCPUTime = 0L;
+    if (IsCurrentThreadCPUTimeSupported) {
+      startCPUTime = threadMXBean.getCurrentThreadCpuTime();
+    }
+
     // compute how much more to skip
     long diff = targetPos - pos;
     if (diff > 0) {
@@ -268,6 +293,13 @@ public class S3AInputStream extends FSInputStream implements CanSetReadahead {
           incrementBytesRead(diff);
         }
 
+        long elapsedTimeMicrosec = (System.nanoTime() - startTime) / 1000L;
+        S3ATimeInstrumentation.incrementTimeElapsedSeekOps(elapsedTimeMicrosec);
+        if (IsCurrentThreadCPUTimeSupported) {
+          long deltaCPUTimeMicrosec = (threadMXBean.getCurrentThreadCpuTime() - startCPUTime) / 1000L;
+          S3ATimeInstrumentation.incrementCPUTimeDuringSeek(deltaCPUTimeMicrosec);
+        }
+
         if (pos == targetPos) {
           // all is well
           return;
@@ -280,6 +312,14 @@ public class S3AInputStream extends FSInputStream implements CanSetReadahead {
     } else if (diff < 0) {
       // backwards seek
       streamStatistics.seekBackwards(diff);
+
+      long elapsedTimeMicrosec = (System.nanoTime() - startTime) / 1000L;
+      S3ATimeInstrumentation.incrementTimeElapsedSeekOps(elapsedTimeMicrosec);
+      if (IsCurrentThreadCPUTimeSupported) {
+        long deltaCPUTimeMicrosec = (threadMXBean.getCurrentThreadCpuTime() - startCPUTime) / 1000L;
+        S3ATimeInstrumentation.incrementCPUTimeDuringSeek(deltaCPUTimeMicrosec);
+      }
+
       // if the stream is in "Normal" mode, switch to random IO at this
       // point, as it is indicative of columnar format IO
       if (inputPolicy.equals(S3AInputPolicy.Normal)) {
@@ -339,6 +379,7 @@ public class S3AInputStream extends FSInputStream implements CanSetReadahead {
     streamStatistics.bytesRead(bytesRead);
     if (context.stats != null && bytesRead > 0) {
       context.stats.incrementBytesRead(bytesRead);
+      S3ATimeInstrumentation.incrementBytesRead(bytesRead);
     }
   }
 
@@ -354,6 +395,12 @@ public class S3AInputStream extends FSInputStream implements CanSetReadahead {
       lazySeek(nextReadPos, 1);
     } catch (EOFException e) {
       return -1;
+    }
+
+    long startTime = System.nanoTime();
+    long startCPUTime = 0L;
+    if (IsCurrentThreadCPUTimeSupported) {
+      startCPUTime = threadMXBean.getCurrentThreadCpuTime();
     }
 
     // With S3Guard, the metadatastore gave us metadata for the file in
@@ -377,6 +424,13 @@ public class S3AInputStream extends FSInputStream implements CanSetReadahead {
           }
           return b;
         });
+
+    long elapsedTimeMicrosec = (System.nanoTime() - startTime) / 1000L;
+    S3ATimeInstrumentation.incrementTimeElapsedReadOps(elapsedTimeMicrosec);
+    if (IsCurrentThreadCPUTimeSupported) {
+      long deltaCPUTimeMicrosec = (threadMXBean.getCurrentThreadCpuTime() - startCPUTime) / 1000L;
+      S3ATimeInstrumentation.incrementCPUTimeDuringRead(deltaCPUTimeMicrosec);
+    }
 
     if (byteRead >= 0) {
       pos++;
@@ -436,6 +490,12 @@ public class S3AInputStream extends FSInputStream implements CanSetReadahead {
       return -1;
     }
 
+    long startTime = System.nanoTime();
+    long startCPUTime = 0L;
+    if (IsCurrentThreadCPUTimeSupported) {
+      startCPUTime = threadMXBean.getCurrentThreadCpuTime();
+    }
+
     // With S3Guard, the metadatastore gave us metadata for the file in
     // open(), so we use a slightly different retry policy.
     // read() may not be likely to fail, but reopen() does a GET which
@@ -460,6 +520,13 @@ public class S3AInputStream extends FSInputStream implements CanSetReadahead {
           }
           return bytes;
         });
+
+    long elapsedTimeMicrosec = (System.nanoTime() - startTime) / 1000L;
+    S3ATimeInstrumentation.incrementTimeElapsedReadOps(elapsedTimeMicrosec);
+    if (IsCurrentThreadCPUTimeSupported) {
+      long deltaCPUTimeMicrosec = (threadMXBean.getCurrentThreadCpuTime() - startCPUTime) / 1000L;
+      S3ATimeInstrumentation.incrementCPUTimeDuringRead(deltaCPUTimeMicrosec);
+    }
 
     if (bytesRead > 0) {
       pos += bytesRead;

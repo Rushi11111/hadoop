@@ -23,6 +23,8 @@ import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InterruptedIOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.net.URI;
 import java.nio.file.AccessDeniedException;
 import java.text.DateFormat;
@@ -204,6 +206,10 @@ public class S3AFileSystem extends FileSystem implements StreamCapabilities {
   private MagicCommitIntegration committerIntegration;
 
   private AWSCredentialProviderList credentials;
+
+  ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
+  boolean IsCurrentThreadCPUTimeSupported =
+          threadMXBean.isCurrentThreadCpuTimeSupported();
 
   /** Add any deprecated keys. */
   @SuppressWarnings("deprecation")
@@ -1236,6 +1242,13 @@ public class S3AFileSystem extends FileSystem implements StreamCapabilities {
    */
   @Retries.RetryRaw
   protected ObjectMetadata getObjectMetadata(String key) throws IOException {
+
+    long startTime = System.nanoTime();
+    long startCPUTime = 0L;
+    if (IsCurrentThreadCPUTimeSupported) {
+      startCPUTime = threadMXBean.getCurrentThreadCpuTime();
+    }
+
     GetObjectMetadataRequest request =
         new GetObjectMetadataRequest(bucket, key);
     //SSE-C requires to be filled in if enabled for object metadata
@@ -1249,6 +1262,14 @@ public class S3AFileSystem extends FileSystem implements StreamCapabilities {
           return s3.getObjectMetadata(request);
         });
     incrementReadOperations();
+
+    long elapsedTimeMicrosec = (System.nanoTime() - startTime) / 1000L;
+    S3ATimeInstrumentation.incrementTimeGetObjectMetadata(elapsedTimeMicrosec);
+    if (IsCurrentThreadCPUTimeSupported) {
+      long deltaCPUTimeMicrosec = (threadMXBean.getCurrentThreadCpuTime() - startCPUTime) / 1000L;
+      S3ATimeInstrumentation.incrementTimeCPUGetObjectMetadata(deltaCPUTimeMicrosec);
+    }
+
     return meta;
   }
 

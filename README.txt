@@ -1,31 +1,30 @@
-For the latest information about Hadoop, please visit our website at:
+HDFS and S3A I/O read time custom instrumentation.
+Author and contact: Luca.Canali@cern.ch
 
-   http://hadoop.apache.org/
+This adds I/O time instrumentation to HDFS and S3A filesystems.
+The proposed changes introduce I/O time instrumentation for S3AInputStream and for DFSInputStream.
+Note, only read instrumentation is implemented so far
 
-and our wiki, at:
+The instrumentation adds an API with counters in
+- S3ATimeInstrumentation
+- HDFSTimeInstrumentation
 
-   http://wiki.apache.org/hadoop/
+The jars modified by this change are:
 
-This distribution includes cryptographic software.  The country in 
-which you currently reside may have restrictions on the import, 
-possession, use, and/or re-export to another country, of 
-encryption software.  BEFORE using any encryption software, please 
-check your country's laws, regulations and policies concerning the
-import, possession, or use, and re-export of encryption software, to 
-see if this is permitted.  See <http://www.wassenaar.org/> for more
-information.
+hadoop-hdfs-client-3.2.0.jar
+  -  hadoop-hdfs-project/hadoop-hdfs-client/target/hadoop-hdfs-client-3.2.0.jar
+hadoop-aws-3.2.0.jar
+  - hadoop-tools/hadoop-aws/target/lib/hadoop-hdfs-client-3.2.0.jar
 
-The U.S. Government Department of Commerce, Bureau of Industry and
-Security (BIS), has classified this software as Export Commodity 
-Control Number (ECCN) 5D002.C.1, which includes information security
-software using or performing cryptographic functions with asymmetric
-algorithms.  The form and manner of this Apache Software Foundation
-distribution makes it eligible for export under the License Exception
-ENC Technology Software Unrestricted (TSU) exception (see the BIS 
-Export Administration Regulations, Section 740.13) for both object 
-code and source code.
+The motivation of this work is to instrument I/O activity for Spark jobs, see:
+  - https://github.com/cerndb/SparkPlugins
 
-The following provides more details on the included cryptographic
-software:
-  Hadoop Core uses the SSL libraries from the Jetty project written 
-by mortbay.org.
+This work builds on similar work to instrument I/O for Hadoop-XRootD connector and OCI-HDFS connector in
+
+- https://github.com/cerndb/hadoop-xrootd/blob/master/src/main/java/ch/cern/eos/XRootDInstrumentation.java
+- https://github.com/LucaCanali/oci-hdfs-connector
+
+This is currently a hack on top of Hadoop, it could enter mainstream in the future, see also
+the work on HADOOP-1630 "Add public IOStatistics API; S3A to support"
+https://issues.apache.org/jira/browse/HADOOP-16830
+
