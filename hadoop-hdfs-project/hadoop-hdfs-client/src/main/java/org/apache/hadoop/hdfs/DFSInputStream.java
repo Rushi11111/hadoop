@@ -20,6 +20,8 @@ package org.apache.hadoop.hdfs;
 import java.io.EOFException;
 import java.io.IOException;
 import java.io.InterruptedIOException;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.net.InetSocketAddress;
 import java.nio.ByteBuffer;
 import java.nio.channels.ClosedByInterruptException;
@@ -107,6 +109,9 @@ public class DFSInputStream extends FSInputStream
   protected AtomicBoolean closed = new AtomicBoolean(false);
   protected final String src;
   protected final boolean verifyChecksum;
+
+  private final ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
+  private final boolean IsCurrentThreadCPUTimeSupported = threadMXBean.isCurrentThreadCpuTimeSupported();
 
   // state by stateful read only:
   // (protected by lock on this)
@@ -744,6 +749,14 @@ public class DFSInputStream extends FSInputStream
       throw new IOException("Stream closed");
     }
 
+    long startTime = System.nanoTime();
+    long startCPUTime;
+    if (IsCurrentThreadCPUTimeSupported) {
+      startCPUTime = threadMXBean.getCurrentThreadCpuTime();
+    } else {
+      startCPUTime = 0L;
+    }
+
     int len = strategy.getTargetLength();
     CorruptedBlocks corruptedBlocks = new CorruptedBlocks();
     failures = 0;
@@ -771,6 +784,21 @@ public class DFSInputStream extends FSInputStream
             // got a EOS from reader though we expect more data on it.
             throw new IOException("Unexpected EOS from the reader");
           }
+
+          long endTime = System.nanoTime();
+          long endCPUTime;
+          if (IsCurrentThreadCPUTimeSupported) {
+            endCPUTime = threadMXBean.getCurrentThreadCpuTime();
+          } else {
+            endCPUTime = 0L;
+          }
+          long elapsedTimeMicrosec = (endTime - startTime) / 1000L;
+          long deltaCPUTimeMicrosec = (endCPUTime - startCPUTime) / 1000L;
+          HDFSTimeInstrumentation.incrementTimeElapsedReadOps(elapsedTimeMicrosec);
+          HDFSTimeInstrumentation.incrementReadCalls(1);
+          HDFSTimeInstrumentation.incrementBytesRead((long)result);
+          HDFSTimeInstrumentation.incrementCPUTimeDuringRead(deltaCPUTimeMicrosec);
+
           updateReadStatistics(readStatistics, result, blockReader);
           dfsClient.updateFileSystemReadStats(blockReader.getNetworkDistance(),
               result);
@@ -1044,6 +1072,15 @@ public class DFSInputStream extends FSInputStream
     LocatedBlock block = datanode.block;
     while (true) {
       BlockReader reader = null;
+
+      long startTime = System.nanoTime();
+      long startCPUTime;
+      if (IsCurrentThreadCPUTimeSupported) {
+        startCPUTime = threadMXBean.getCurrentThreadCpuTime();
+      } else {
+        startCPUTime = 0L;
+      }
+
       try {
         DFSClientFaultInjector.get().fetchFromDatanodeException();
         reader = getBlockReader(block, startInBlk, len, datanode.addr,
@@ -1063,6 +1100,20 @@ public class DFSInputStream extends FSInputStream
           nread += ret;
         }
         buf.position(buf.position() + nread);
+
+        long endTime = System.nanoTime();
+        long endCPUTime;
+        if (IsCurrentThreadCPUTimeSupported) {
+          endCPUTime = threadMXBean.getCurrentThreadCpuTime();
+        } else {
+          endCPUTime = 0L;
+        }
+        long elapsedTimeMicrosec = (endTime - startTime) / 1000L;
+        long deltaCPUTimeMicrosec = (endCPUTime - startCPUTime) / 1000L;
+        HDFSTimeInstrumentation.incrementTimeElapsedReadOps(elapsedTimeMicrosec);
+        HDFSTimeInstrumentation.incrementReadCalls(1);
+        HDFSTimeInstrumentation.incrementBytesRead((long)nread);
+        HDFSTimeInstrumentation.incrementCPUTimeDuringRead(deltaCPUTimeMicrosec);
 
         IOUtilsClient.updateReadStatistics(readStatistics, nread, reader);
         dfsClient.updateFileSystemReadStats(
@@ -1736,11 +1787,34 @@ public class DFSInputStream extends FSInputStream
     boolean success = false;
     ByteBuffer buffer;
     try {
+      long startTime = System.nanoTime();
+      long startCPUTime;
+      if (IsCurrentThreadCPUTimeSupported) {
+        startCPUTime = threadMXBean.getCurrentThreadCpuTime();
+      } else {
+        startCPUTime = 0L;
+      }
+
       seek(curPos + length);
       buffer = clientMmap.getMappedByteBuffer().asReadOnlyBuffer();
       buffer.position((int)blockPos);
       buffer.limit((int)(blockPos + length));
       getExtendedReadBuffers().put(buffer, clientMmap);
+
+      long endTime = System.nanoTime();
+      long endCPUTime;
+      if (IsCurrentThreadCPUTimeSupported) {
+        endCPUTime = threadMXBean.getCurrentThreadCpuTime();
+      } else {
+        endCPUTime = 0L;
+      }
+      long elapsedTimeMicrosec = (endTime - startTime) / 1000L;
+      long deltaCPUTimeMicrosec = (endCPUTime - startCPUTime) / 1000L;
+      HDFSTimeInstrumentation.incrementTimeElapsedReadOps(elapsedTimeMicrosec);
+      HDFSTimeInstrumentation.incrementReadCalls(1);
+      HDFSTimeInstrumentation.incrementBytesRead((long)length);
+      HDFSTimeInstrumentation.incrementCPUTimeDuringRead(deltaCPUTimeMicrosec);
+
       readStatistics.addZeroCopyBytes(length);
       DFSClient.LOG.debug("readZeroCopy read {} bytes from offset {} via the "
           + "zero-copy read path.  blockEnd = {}", length, curPos, blockEnd);
