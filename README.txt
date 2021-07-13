@@ -1,5 +1,5 @@
 HDFS and S3A I/O read time custom instrumentation.
-Author and contact: Luca.Canali@cern.ch
+Main Author and contact: Luca.Canali@cern.ch
 
 This adds I/O time instrumentation to HDFS and S3A filesystems.
 The proposed changes introduce I/O time instrumentation for S3AInputStream and for DFSInputStream.
