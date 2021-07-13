@@ -20,6 +20,8 @@ package org.apache.hadoop.fs.s3a;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -174,6 +176,10 @@ class S3ABlockOutputStream extends OutputStream implements
     }
   }
 
+  //custom added ------------------------------------------------------------------------------------------
+  private final ThreadMXBean threadMXBean = ManagementFactory.getThreadMXBean();
+  private final boolean IsCurrentThreadCPUTimeSupported = threadMXBean.isCurrentThreadCpuTimeSupported();
+  //-------------------------------------------------------------------------------------------------------
   /**
    * Demand create a destination block.
    * @return the active block; null if there isn't one.
@@ -260,6 +266,7 @@ class S3ABlockOutputStream extends OutputStream implements
   public synchronized void write(int b) throws IOException {
     singleCharWrite[0] = (byte)b;
     write(singleCharWrite, 0, 1);
+
   }
 
   /**
@@ -275,7 +282,13 @@ class S3ABlockOutputStream extends OutputStream implements
   @Override
   public synchronized void write(byte[] source, int offset, int len)
       throws IOException {
-
+//    ---------------------------------------------------------------- CUSTOM ADDED --------------------------------
+    long startTime = System.nanoTime();
+    long startCPUTime = 0L;
+    if (IsCurrentThreadCPUTimeSupported) {
+      startCPUTime = threadMXBean.getCurrentThreadCpuTime();
+    }
+//    --------------------------------------------------------------------------------------------------------------
     S3ADataBlocks.validateWriteArgs(source, offset, len);
     checkOpen();
     if (len == 0) {
@@ -299,6 +312,15 @@ class S3ABlockOutputStream extends OutputStream implements
         uploadCurrentBlock();
       }
     }
+//    ----------------------------------------------------------------------------------------------------------------
+    long timeDuration = (System.nanoTime() - startTime)/1000;
+    if(IsCurrentThreadCPUTimeSupported) {
+      long deltaCPUTimeMicrosec = (threadMXBean.getCurrentThreadCpuTime() - startCPUTime) / 1000L;
+      S3ATimeInstrumentation.incrementTimeCPUDuringWriteMusec(deltaCPUTimeMicrosec);
+    }
+    S3ATimeInstrumentation.incrementTimeElapsedWriteMusec(timeDuration);
+    S3ATimeInstrumentation.incrementWriteBytesCustom((long)len);
+//    ----------------------------------------------------------------------------------------------------------------
   }
 
   /**

@@ -27,6 +27,36 @@ public class S3ATimeInstrumentation {
     private static AtomicLong timeCPUGetObjectMetadata = new AtomicLong();
     private static AtomicLong bytesRead = new AtomicLong();
 
+    //Custom added ----------------------------------------------------------------------------------------------------------------
+    private static AtomicLong timeElapsedWriteMusec = new AtomicLong();
+    private static AtomicLong timeCPUDuringWriteMusec = new AtomicLong();
+    private static AtomicLong writeBytesCustom = new AtomicLong();
+
+    public static void incrementTimeElapsedWriteMusec(Long incrementTime) {
+        timeElapsedWriteMusec.addAndGet(incrementTime);
+    }
+
+    public static void incrementTimeCPUDuringWriteMusec(Long incrementTime) {
+        timeCPUDuringWriteMusec.addAndGet(incrementTime);
+    }
+
+    public static void incrementWriteBytesCustom(Long incrementBytes) {
+        writeBytesCustom.getAndAdd(incrementBytes);
+    }
+
+    public static long getTimeElapsedWriteMusec() {
+        return timeElapsedWriteMusec.get();
+    }
+
+    public static long getTimeCPUWriteMusec() {
+        return timeCPUDuringWriteMusec.get();
+    }
+
+    public static long getWriteBytesCustom() {
+        return writeBytesCustom.get();
+    }
+    //------------------------------------------------------------------------------------------------------------------------------
+
     /**
      * Increment the value of the cumulative elapsed time spent in read operations.
      *
